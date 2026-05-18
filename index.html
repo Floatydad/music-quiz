@@ -43,24 +43,86 @@
   header {
     width: 100%;
     max-width: 600px;
-    padding: 2rem 1.5rem 1rem;
+    padding: 1.5rem 1.5rem 0.75rem;
     display: flex;
-    align-items: baseline;
-    gap: 0.75rem;
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  header h1 {
-    font-family: 'Lora', serif;
-    font-size: 22px;
+  #logo {
+    position: relative;
+    width: 100%;
+    padding: 0.6rem 0 0.6rem 3rem;
+    overflow: hidden;
+  }
+
+  #logo-clef {
+    position: absolute;
+    left: -2px;
+    top: 50%;
+    transform: translateY(-52%);
+    font-family: Georgia, serif;
+    font-size: 62px;
+    line-height: 1;
+    color: var(--gold);
+    opacity: 0.28;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .logo-staff-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 0.5px;
+    background: var(--border);
+    pointer-events: none;
+  }
+
+  #logo-name {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 21px;
     font-weight: 400;
     color: var(--text);
-    letter-spacing: -0.3px;
+    letter-spacing: 0.5px;
+    position: relative;
+    z-index: 1;
+    line-height: 1.25;
   }
 
-  header span {
-    font-size: 13px;
+  #logo-sub {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 9px;
+    font-weight: 400;
+    color: var(--text-muted);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    position: relative;
+    z-index: 1;
+    margin-top: 4px;
+  }
+
+  #logo-rule {
+    width: calc(100% - 3rem);
+    margin-left: 3rem;
+    border: none;
+    border-top: 0.5px solid var(--border-strong);
+    margin-top: 1px;
+  }
+  #logo-rule2 {
+    width: calc(100% - 3rem);
+    margin-left: 3rem;
+    border: none;
+    border-top: 0.5px solid var(--border-strong);
+    margin-top: 2px;
+    opacity: 0.4;
+  }
+
+  #mode-label-wrap {
+    font-size: 12px;
     color: var(--text-faint);
     font-weight: 300;
+    margin-top: 0.35rem;
+    letter-spacing: 0.2px;
   }
 
   /* Mode selector */
@@ -309,8 +371,19 @@
 <body>
 
 <header>
-  <h1>Music Theory Quiz</h1>
-  <span id="mode-label">Chord Symbols</span>
+  <div id="logo">
+    <div class="logo-staff-line" style="top:22%"></div>
+    <div class="logo-staff-line" style="top:36%"></div>
+    <div class="logo-staff-line" style="top:50%"></div>
+    <div class="logo-staff-line" style="top:64%"></div>
+    <div class="logo-staff-line" style="top:78%"></div>
+    <div id="logo-clef">𝄞</div>
+    <div id="logo-name">Mick Hegarty</div>
+    <div id="logo-sub">Piano &nbsp; Tuition</div>
+  </div>
+  <hr id="logo-rule">
+  <hr id="logo-rule2">
+  <div id="mode-label-wrap"><span id="mode-label">Chord Symbols</span></div>
 </header>
 
 <div id="mode-bar">
