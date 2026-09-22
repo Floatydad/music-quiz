@@ -360,6 +360,20 @@
 
   .helper-btn:hover { background: var(--surface2); }
 
+  /* Replay sound button */
+  #replay-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0.85rem;
+  }
+
+  #credits {
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-bottom: 1.5rem;
+  }
+
   /* Responsive */
   @media (max-width: 480px) {
     header { padding: 1.25rem 1rem 0.75rem; }
@@ -416,7 +430,11 @@
   <div id="options"></div>
   <div id="feedback"></div>
   <div id="sub-feedback"></div>
+  <div id="replay-wrap" style="display:none">
+    <button class="helper-btn" onclick="playCurrent()">🔊 Hear it again</button>
+  </div>
   <button id="next-btn" disabled onclick="nextQuestion()">Next →</button>
+  <div id="credits">Piano sound: Salamander Grand Piano by Alexander Holm (CC BY 3.0)</div>
 </div>
 
 <script>
@@ -561,6 +579,85 @@ function updateScore() {
   document.getElementById('streak-val').textContent = streak;
 }
 
+// ─── SOUND ───────────────────────────────────────────────────────────────────
+// Recorded grand piano samples (one every 3 semitones); in-between notes are
+// played by re-pitching the nearest sample, so every pitch is exact.
+
+const SAMPLE_URL = 'https://tonejs.github.io/audio/salamander/';
+const SAMPLE_NAMES = ['C','Ds','Fs','A'];           // file names for pitch classes 0,3,6,9
+const PITCH = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+const CHORD_INTERVALS = {
+  "Major 7":      [0,4,7,11],
+  "Dominant 7":   [0,4,7,10],
+  "Minor 7":      [0,3,7,10],
+  "Minor 7♭5":    [0,3,6,10],
+  "Diminished 7": [0,3,6,9],
+};
+
+let audioCtx = null;
+const samples = {};   // MIDI note number -> decoded AudioBuffer
+
+function initAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  // Lets iPhone play sound even when the silent switch is on (Safari 17+)
+  if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch(e) {} }
+  audioCtx = new AC();
+  for (let m = 33; m <= 84; m += 3) {               // A1 up to C6
+    const name = SAMPLE_NAMES[(m % 12) / 3] + (Math.floor(m / 12) - 1);
+    fetch(SAMPLE_URL + name + '.mp3')
+      .then(r => r.arrayBuffer())
+      .then(data => new Promise((res, rej) => audioCtx.decodeAudioData(data, res, rej)))
+      .then(buf => { samples[m] = buf; })
+      .catch(() => {});                              // no sound if offline — quiz still works
+  }
+}
+
+function playMidi(midi, when, dur, vol) {
+  let nearest = null;
+  for (const k in samples) {
+    if (nearest === null || Math.abs(k - midi) < Math.abs(nearest - midi)) nearest = +k;
+  }
+  if (nearest === null) return;
+  const src = audioCtx.createBufferSource();
+  src.buffer = samples[nearest];
+  src.playbackRate.value = Math.pow(2, (midi - nearest) / 12);
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(vol, when);
+  gain.gain.setTargetAtTime(0, when + dur, 0.15);    // gentle release, like lifting the key
+  src.connect(gain).connect(audioCtx.destination);
+  src.start(when);
+  src.stop(when + dur + 1);
+}
+
+function noteMidi(n) {
+  const acc = n.acc === 'sharp' ? 1 : n.acc === 'flat' ? -1 : 0;
+  return 12 * (n.octave + 1) + PITCH[n.note] + acc;
+}
+
+function chordMidis(c) {
+  const m = c.symbol.match(/^([A-G])([#♯b♭]?)/);
+  const acc = m[2] === '#' || m[2] === '♯' ? 1 : m[2] ? -1 : 0;
+  const root = 48 + (PITCH[m[1]] + acc + 12) % 12;   // root between C3 and B3
+  return [root - 12, ...CHORD_INTERVALS[c.type].map(i => root + i)];
+}
+
+function playCurrent() {
+  if (!audioCtx || !current) return;
+  if (audioCtx.state !== 'running') audioCtx.resume();
+  const t = audioCtx.currentTime + 0.05;
+  if (mode === 'notes') {
+    playMidi(noteMidi(current), t, 1.5, 0.9);
+  } else if (mode === 'chords') {
+    chordMidis(current).forEach((m, i) => playMidi(m, t + i * 0.03, 2, 0.5));
+  } else {
+    // Major scale up from the tonic, then the tonic chord
+    const tonic = 60 + (((current.sharps - current.flats) * 7) % 12 + 12) % 12;
+    [0,2,4,5,7,9,11,12].forEach((s, i) => playMidi(tonic + s, t + i * 0.3, 0.35, 0.8));
+    [0,4,7,12].forEach(s => playMidi(tonic + s, t + 2.5, 1.5, 0.5));
+  }
+}
+
 // ─── MODE ────────────────────────────────────────────────────────────────────
 
 function setMode(m) {
@@ -700,6 +797,7 @@ function nextQuestion() {
   document.getElementById('feedback').className='';
   document.getElementById('sub-feedback').textContent='';
   document.getElementById('next-btn').disabled=true;
+  document.getElementById('replay-wrap').style.display='none';
   document.getElementById('answer-input').value='';
   document.getElementById('answer-input').disabled=false;
   document.getElementById('submit-btn').disabled=false;
@@ -785,6 +883,8 @@ function handleChordAnswer(btn, chosen) {
   }
   updateScore();
   document.getElementById('next-btn').disabled=false;
+  document.getElementById('replay-wrap').style.display='flex';
+  playCurrent();
 }
 
 function normaliseNote(s) {
@@ -837,6 +937,8 @@ function submitFreeAnswer() {
   }
   updateScore();
   document.getElementById('next-btn').disabled=false;
+  document.getElementById('replay-wrap').style.display='flex';
+  playCurrent();
 }
 
 function setFeedback(type, msg) {
@@ -859,6 +961,7 @@ document.getElementById('answer-input').addEventListener('keydown',e=>{
 });
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
+initAudio();
 replenish();
 nextQuestion();
 </script>
