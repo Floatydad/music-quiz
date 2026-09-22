@@ -364,8 +364,58 @@
   #replay-wrap {
     display: flex;
     justify-content: center;
+    gap: 8px;
     margin-bottom: 0.85rem;
   }
+
+  /* Ear training keyboard */
+  #keyboard {
+    position: relative;
+    width: 100%;
+    max-width: 360px;
+    height: 150px;
+    display: flex;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+
+  .key {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.12s;
+  }
+
+  .key.white {
+    flex: 1;
+    background: #fff;
+    border: 0.5px solid var(--border-strong);
+    border-radius: 0 0 6px 6px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 8px;
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+
+  .key.black {
+    position: absolute;
+    top: 0;
+    width: 7.5%;
+    height: 60%;
+    background: var(--text);
+    border-radius: 0 0 4px 4px;
+    transform: translateX(-50%);
+    z-index: 1;
+  }
+
+  .key.white:active { background: var(--surface2); }
+  .key.black:active { background: #444; }
+  .key.white.tried { background: var(--danger-light); }
+  .key.black.tried { background: var(--danger); }
+  .key.white.found { background: var(--accent-light); color: var(--accent); }
+  .key.black.found { background: var(--accent); }
 
   #credits {
     text-align: center;
@@ -406,6 +456,7 @@
   <button class="mode-btn active" onclick="setMode('chords')">Chord<br>Symbols</button>
   <button class="mode-btn" onclick="setMode('notes')">Note<br>Reading</button>
   <button class="mode-btn" onclick="setMode('keys')">Key<br>Signatures</button>
+  <button class="mode-btn" onclick="setMode('ear')">Ear<br>Training</button>
 </div>
 
 <div id="main">
@@ -432,6 +483,7 @@
   <div id="sub-feedback"></div>
   <div id="replay-wrap" style="display:none">
     <button class="helper-btn" onclick="playCurrent()">🔊 Hear it again</button>
+    <button class="helper-btn" id="ref-btn" onclick="playReference()">Play middle C</button>
   </div>
   <button id="next-btn" disabled onclick="nextQuestion()">Next →</button>
   <div id="credits">Piano sound: Salamander Grand Piano by Alexander Holm (CC BY 3.0)</div>
@@ -550,6 +602,10 @@ const KEY_DATA = [
   { name:"A♭ major or F minor", accepted:["a♭ major","ab major","f minor"],    sharps:0, flats:4 },
 ];
 
+// Ear training: mystery notes from middle C (MIDI 60) up to the C above (72)
+const EAR_DATA = [60,61,62,63,64,65,66,67,68,69,70,71,72].map(midi => ({ midi }));
+const NOTE_NAMES = ['C','C♯/D♭','D','D♯/E♭','E','F','F♯/G♭','G','G♯/A♭','A','A♯/B♭','B'];
+
 // ─── STATE ───────────────────────────────────────────────────────────────────
 
 let mode = 'chords';
@@ -557,6 +613,7 @@ let score = 0, total = 0, streak = 0;
 let current = null;
 let answered = false;
 let pool = [];
+let guesses = 0;   // ear training: guesses made on the current note
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 
@@ -570,7 +627,7 @@ function shuffle(arr) {
 }
 
 function replenish() {
-  const src = mode==='chords' ? CHORD_DATA : mode==='notes' ? NOTE_DATA : KEY_DATA;
+  const src = { chords:CHORD_DATA, notes:NOTE_DATA, keys:KEY_DATA, ear:EAR_DATA }[mode];
   pool = shuffle([...src]);
 }
 
@@ -646,7 +703,9 @@ function playCurrent() {
   if (!audioCtx || !current) return;
   if (audioCtx.state !== 'running') audioCtx.resume();
   const t = audioCtx.currentTime + 0.05;
-  if (mode === 'notes') {
+  if (mode === 'ear') {
+    playMidi(current.midi, t, 1.5, 0.9);
+  } else if (mode === 'notes') {
     playMidi(noteMidi(current), t, 1.5, 0.9);
   } else if (mode === 'chords') {
     chordMidis(current).forEach((m, i) => playMidi(m, t + i * 0.03, 2, 0.5));
@@ -658,6 +717,16 @@ function playCurrent() {
   }
 }
 
+function playNow(midi) {
+  if (!audioCtx) return;
+  if (audioCtx.state !== 'running') audioCtx.resume();
+  playMidi(midi, audioCtx.currentTime + 0.02, 1.2, 0.9);
+}
+
+function playReference() {
+  playNow(60);
+}
+
 // ─── MODE ────────────────────────────────────────────────────────────────────
 
 function setMode(m) {
@@ -666,9 +735,9 @@ function setMode(m) {
   updateScore();
   pool=[];
   document.querySelectorAll('.mode-btn').forEach((b,i)=>{
-    b.classList.toggle('active', ['chords','notes','keys'][i]===m);
+    b.classList.toggle('active', ['chords','notes','keys','ear'][i]===m);
   });
-  const labels = { chords:'Chord Symbols', notes:'Note Reading', keys:'Key Signatures' };
+  const labels = { chords:'Chord Symbols', notes:'Note Reading', keys:'Key Signatures', ear:'Ear Training' };
   document.getElementById('mode-label').textContent = labels[m];
   nextQuestion();
 }
@@ -798,6 +867,7 @@ function nextQuestion() {
   document.getElementById('sub-feedback').textContent='';
   document.getElementById('next-btn').disabled=true;
   document.getElementById('replay-wrap').style.display='none';
+  document.getElementById('ref-btn').style.display='none';
   document.getElementById('answer-input').value='';
   document.getElementById('answer-input').disabled=false;
   document.getElementById('submit-btn').disabled=false;
@@ -806,8 +876,10 @@ function nextQuestion() {
     showChordQuestion();
   } else if (mode==='notes') {
     showNoteQuestion();
-  } else {
+  } else if (mode==='keys') {
     showKeyQuestion();
+  } else {
+    showEarQuestion();
   }
 }
 
@@ -854,6 +926,75 @@ function showKeyQuestion() {
   document.getElementById('display-area').innerHTML = drawStaff('treble', undefined, null, current.sharps, current.flats);
   document.getElementById('answer-input').placeholder='e.g. G major or D minor';
   document.getElementById('answer-input').focus();
+}
+
+function showEarQuestion() {
+  guesses = 0;
+  document.getElementById('options').style.display='none';
+  document.getElementById('options').innerHTML='';
+  document.getElementById('answer-row').style.display='none';
+  document.getElementById('note-helpers').style.display='none';
+  document.getElementById('clef-label').textContent='Listen, then tap the note you heard';
+
+  // One octave, middle C to the C above. Black keys sit on the line between two white keys.
+  const whites = [60,62,64,65,67,69,71,72];
+  const blacks = [[61,1],[63,2],[66,4],[68,5],[70,6]];   // [midi, white keys to its left]
+  let html = '<div id="keyboard">';
+  whites.forEach(m => {
+    html += `<div class="key white" data-midi="${m}">${NOTE_NAMES[m % 12]}</div>`;
+  });
+  blacks.forEach(([m, pos]) => {
+    html += `<div class="key black" data-midi="${m}" style="left:${pos * 12.5}%"></div>`;
+  });
+  html += '</div>';
+  document.getElementById('display-area').innerHTML = html;
+  document.querySelectorAll('.key').forEach(k => {
+    k.onclick = () => handleEarGuess(k, +k.dataset.midi);
+  });
+
+  document.getElementById('ref-btn').style.display='';
+  document.getElementById('replay-wrap').style.display='flex';
+  playCurrent();
+}
+
+function earHint(guess) {
+  const diff = current.midi - guess;
+  const dir = diff > 0 ? 'higher' : 'lower';
+  const dist = Math.abs(diff);
+  if (dist === 1) return 'So close! Just one semitone ' + dir + '.';
+  if (dist === 2) return 'Very close — a tone ' + dir + '.';
+  if (dist <= 4) return 'Getting warmer — go ' + dir + '.';
+  return 'Quite a bit ' + dir + '.';
+}
+
+function handleEarGuess(key, midi) {
+  playNow(midi);                      // always let them hear the key they tapped
+  if (answered) return;
+  guesses++;
+  const fb = document.getElementById('feedback');
+
+  if (midi === current.midi) {
+    answered = true; total++;
+    key.classList.add('found');
+    const name = NOTE_NAMES[midi % 12];
+    if (guesses === 1) {
+      score++; streak++;
+      setFeedback('correct', '✓ Correct first time — ' + name);
+      document.getElementById('sub-feedback').textContent = '';
+    } else {
+      streak = 0;
+      setFeedback('correct', '✓ Found it — ' + name);
+      document.getElementById('sub-feedback').textContent = 'Got it in ' + guesses + ' guesses';
+    }
+    updateScore();
+    document.getElementById('next-btn').disabled = false;
+  } else {
+    key.classList.add('tried');
+    fb.textContent = earHint(midi);
+    fb.className = 'hint';
+    document.getElementById('sub-feedback').textContent =
+      'Guess ' + guesses + ' — tap 🔊 to hear the mystery note again';
+  }
 }
 
 // ─── ANSWER HANDLING ─────────────────────────────────────────────────────────
